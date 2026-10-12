@@ -86,6 +86,11 @@
           <option value="timeline">Chronologique (année de naissance)</option>
         </select>
       </label>
+      <label class="check"><input type="checkbox" id="opt-group"> Regrouper par patronyme</label>
+      <label class="field inline">Intensité
+        <input type="range" id="opt-group-strength" min="0" max="1" step="0.05"><output id="opt-group-strength-val"></output>
+      </label>
+      <small class="muted hint-block">Les porteurs d'un même nom sont rassemblés en zones (les femmes avec leur nom de naissance) ; les mariages forment des ponts entre les zones.</small>
       <label class="field">Couleur des personnes
         <select id="opt-color">
           <option value="sex">Sexe</option>
@@ -94,6 +99,9 @@
           <option value="place">Lieu de naissance</option>
           <option value="component">Groupe familial (composante)</option>
         </select>
+      </label>
+      <label class="field inline">Taille des personnes
+        <input type="range" id="opt-size" min="0.3" max="3" step="0.05"><output id="opt-size-val"></output>
       </label>
       <label class="field">Noms affichés
         <select id="opt-labels">

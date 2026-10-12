@@ -36,6 +36,7 @@
   const DEFAULTS = {
     structure: 'families', layout: 'free', color: 'sex', labels: 'focus',
     hideOthers: false, focusOnly: false, radius: 4, particles: true,
+    nodeSize: 1, groupSurnames: false, groupStrength: 0.5,
   };
   let settings = { ...DEFAULTS };
   try { Object.assign(settings, JSON.parse(localStorage.getItem('gedcom3d.settings') || '{}')); } catch (e) { /* stockage indisponible */ }
@@ -348,6 +349,7 @@
     if (!Graph) return;
     const gd = buildGraphData();
     Graph.graphData(gd);
+    applyGrouping();
     refreshStyles();
     if (reheat) Graph.d3ReheatSimulation();
   }
@@ -494,10 +496,13 @@
 
   function nodeVal(n) {
     if (n.type === 'family') return state.consanguine.has(n.fam.id) ? 0.9 : 0.35;
-    if (n.id === state.selected) return 7;
-    if (state.path && (n.id === state.path.a || n.id === state.path.b)) return 5;
-    if (state.highlight && state.highlight.strong && state.highlight.strong.has(n.id)) return 4;
-    return 1.6;
+    // nodeVal est un volume : on élève le facteur au cube pour que le réglage
+    // agisse proportionnellement sur le diamètre des boules.
+    const k = Math.pow(settings.nodeSize, 3);
+    if (n.id === state.selected) return 7 * k;
+    if (state.path && (n.id === state.path.a || n.id === state.path.b)) return 5 * k;
+    if (state.highlight && state.highlight.strong && state.highlight.strong.has(n.id)) return 4 * k;
+    return 1.6 * k;
   }
 
   function linkColor(l) {
@@ -570,9 +575,157 @@
     for (const { sprite, node } of labels.values()) {
       if (node.x === undefined) { sprite.visible = false; continue; }
       sprite.visible = true;
-      sprite.position.set(node.x, node.y + sprite.userData.offset, node.z);
+      sprite.position.set(node.x, node.y + sprite.userData.offset * Math.max(1, settings.nodeSize), node.z);
     }
+    positionGroupLabels();
     requestAnimationFrame(positionLabels);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Regroupement par patronyme
+  // ---------------------------------------------------------------------------
+  //
+  // Chaque patronyme fréquent reçoit un point d'ancrage dans l'espace ; une force
+  // attire ses porteurs vers ce point. Les femmes sont rattachées à leur nom de
+  // naissance (convention GEDCOM) : les mariages apparaissent comme des ponts
+  // entre zones patronymiques.
+
+  const MAX_GROUPS = 40;
+  const surnameKey = ind => ind.surname.toUpperCase();
+  const groupLabels = new Map(); // patronyme → { sprite, members: [] }
+
+  function surnameAnchors() {
+    const counts = topCounts([...state.data.individuals.values()].map(surnameKey), MAX_GROUPS)
+      .filter(([, n]) => n >= 2);
+    const anchors = new Map();
+    const N = counts.length;
+    const grouped = counts.reduce((a, [, n]) => a + n, 0);
+    // L'espace alloué grandit avec le nombre de groupes et de personnes.
+    const spread = 50 + 14 * Math.sqrt(grouped) + 25 * Math.sqrt(N);
+    const golden = Math.PI * (3 - Math.sqrt(5));
+    const flat = settings.layout !== 'free'; // l'axe vertical est déjà imposé
+    counts.forEach(([key, n], i) => {
+      let x, y, z;
+      if (flat) {
+        // Disposition en tournesol dans le plan horizontal, étirée de gauche à
+        // droite pour rester lisible dans la vue de face.
+        const r = 0.6 * spread * Math.sqrt((i + 0.5) / N);
+        x = 1.6 * r * Math.cos(i * golden);
+        z = 0.7 * r * Math.sin(i * golden);
+        y = 0;
+      } else {
+        // Points répartis régulièrement sur une sphère.
+        const R = spread;
+        const t = N > 1 ? 1 - (2 * i) / (N - 1) : 0;
+        const ring = Math.sqrt(1 - t * t);
+        x = R * ring * Math.cos(i * golden);
+        y = R * t;
+        z = R * ring * Math.sin(i * golden);
+      }
+      anchors.set(key, { x, y, z, count: n });
+    });
+    return anchors;
+  }
+
+  /** Groupe d'un nœud : patronyme pour une personne, celui du mari pour une union. */
+  function groupOf(n) {
+    if (n.type === 'person') return surnameKey(n.ind);
+    const f = n.fam;
+    const ref = f.husb || f.wife || f.children[0];
+    return ref ? surnameKey(state.K.get(ref)) : null;
+  }
+
+  function surnameForce() {
+    let nodes = [];
+    let anchors = new Map();
+    const flat = settings.layout !== 'free';
+    const force = alpha => {
+      const k = 0.02 + 0.25 * settings.groupStrength;
+      for (const n of nodes) {
+        if (n.x === undefined) continue;
+        const a = anchors.get(groupOf(n));
+        if (!a) continue;
+        n.vx += (a.x - n.x) * k * alpha;
+        n.vz += (a.z - n.z) * k * alpha;
+        if (!flat) n.vy += (a.y - n.y) * k * alpha;
+      }
+    };
+    force.initialize = ns => { nodes = ns; anchors = surnameAnchors(); };
+    return force;
+  }
+
+  function applyGrouping() {
+    if (!Graph) return;
+    Graph.d3Force('surname', settings.groupSurnames ? surnameForce() : null);
+    // Plus de répulsion quand on regroupe, pour que les zones respirent.
+    Graph.d3Force('charge').strength(settings.groupSurnames ? -60 : -45);
+    applyLinkForce();
+    updateGroupLabels();
+  }
+
+  /**
+   * Les liens entre deux patronymes différents (mariages, enfants rattachés à
+   * l'union du côté de la mère) sont assouplis et allongés quand on regroupe :
+   * les zones se séparent et les alliances deviennent des ponts visibles.
+   */
+  function applyLinkForce() {
+    const g = settings.groupSurnames ? settings.groupStrength : 0;
+    const node = x => (typeof x === 'object' ? x : state.nodeCache.get(x));
+    const cross = l => {
+      if (!g) return false;
+      const a = groupOf(node(l.source));
+      const b = groupOf(node(l.target));
+      return a !== b;
+    };
+    const base = l => (l.kind === 'spouse' ? 8 : l.kind === 'couple' ? 12 : 18);
+    Graph.d3Force('link')
+      .distance(l => (cross(l) ? base(l) + 70 * g : base(l)))
+      .strength(l => (cross(l) ? 0.9 * (1 - 0.9 * g) : 0.9));
+  }
+
+  function updateGroupLabels() {
+    for (const { sprite } of groupLabels.values()) {
+      labelGroup.remove(sprite);
+      sprite.material.map && sprite.material.map.dispose();
+      sprite.material.dispose();
+    }
+    groupLabels.clear();
+    if (!settings.groupSurnames || !state.data) return;
+    const anchors = surnameAnchors();
+    const members = new Map([...anchors.keys()].map(k => [k, []]));
+    for (const n of Graph.graphData().nodes) {
+      if (n.type === 'person' && members.has(surnameKey(n.ind))) members.get(surnameKey(n.ind)).push(n);
+    }
+    for (const [key, list] of members) {
+      if (!list.length) continue;
+      const sprite = new SpriteText(key);
+      sprite.color = hashColor(key, 70, 70);
+      sprite.textHeight = 9 + Math.min(14, Math.sqrt(list.length) * 1.5);
+      sprite.fontFace = 'system-ui, sans-serif';
+      sprite.fontWeight = '700';
+      sprite.material.depthWrite = false;
+      sprite.material.opacity = 0.85;
+      sprite.material.transparent = true;
+      groupLabels.set(key, { sprite, members: list });
+      labelGroup.add(sprite);
+    }
+  }
+
+  /** Place le nom de chaque groupe au-dessus du barycentre de ses membres. */
+  function positionGroupLabels() {
+    for (const { sprite, members } of groupLabels.values()) {
+      let x = 0, y = 0, z = 0, n = 0, top = -Infinity;
+      for (const m of members) {
+        if (m.x === undefined) continue;
+        x += m.x; y += m.y; z += m.z; n++;
+        if (m.y > top) top = m.y;
+      }
+      sprite.visible = n > 0 && !hasFocus();
+      if (!n) continue;
+      // En disposition libre : au centre du groupe ; sinon au-dessus (l'axe vertical est le temps).
+      const yy = settings.layout === 'free' ? y / n : top + 25;
+      sprite.position.set(x / n, yy, z / n);
+    }
   }
 
   function lifeSpan(ind) {
@@ -627,7 +780,6 @@
       .onNodeHover(n => { container.style.cursor = n ? 'pointer' : ''; })
       .onBackgroundClick(() => closeDropdowns());
 
-    Graph.d3Force('link').distance(l => (l.kind === 'spouse' ? 8 : l.kind === 'couple' ? 12 : 18)).strength(0.9);
     Graph.d3Force('charge').strength(-45).distanceMax(400);
 
     labelGroup = new THREE.Group();
@@ -1057,6 +1209,41 @@
     bind('#opt-labels', 'labels', refreshStyles);
     bind('#opt-hide', 'hideOthers', refreshStyles, 'checked');
     bind('#opt-particles', 'particles', refreshStyles, 'checked');
+    bind('#opt-group', 'groupSurnames', () => {
+      // Le regroupement se lit mieux avec une couleur par patronyme.
+      if (settings.groupSurnames && settings.color === 'sex') {
+        settings.color = 'surname';
+        $('#opt-color').value = 'surname';
+        saveSettings();
+        refreshStyles();
+        renderLegend();
+      }
+      applyGrouping();
+      Graph.d3ReheatSimulation();
+      setTimeout(() => Graph.zoomToFit(800, 40), 2500);
+    }, 'checked');
+
+    // Curseurs : effet immédiat pendant le glissement (limité à une mise à jour par image).
+    const slider = (sel, key, onChange) => {
+      const input = $(sel);
+      const out = $(sel + '-val');
+      const show = () => { out.textContent = Math.round(settings[key] * 100) + ' %'; };
+      input.value = settings[key];
+      show();
+      let pending = false;
+      input.addEventListener('input', () => {
+        settings[key] = parseFloat(input.value);
+        show();
+        if (pending || !state.data) return;
+        pending = true;
+        requestAnimationFrame(() => { pending = false; onChange(); });
+      });
+      input.addEventListener('change', saveSettings);
+    };
+    slider('#opt-size', 'nodeSize', refreshStyles);
+    slider('#opt-group-strength', 'groupStrength', () => {
+      if (settings.groupSurnames) { applyLinkForce(); Graph.d3ReheatSimulation(); }
+    });
     bind('#opt-focus', 'focusOnly', () => {
       if (settings.focusOnly && !state.selected) toast('Sélectionnez d\'abord une personne.');
       rebuildGraph();
