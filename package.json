@@ -1,0 +1,26 @@
+{
+  "name": "3d-gedcom-explorer",
+  "version": "1.0.0",
+  "description": "Visualisation 3D d'arbres généalogiques GEDCOM, entièrement dans le navigateur",
+  "scripts": {
+    "build:vendor": "node scripts/build-vendor.js",
+    "build:single": "node scripts/build-single.js",
+    "build": "npm run build:vendor && npm run build:single",
+    "test": "node --test tests/*.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Chivos/3D-Gedcom-explorer.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Chivos/3D-Gedcom-explorer/issues"
+  },
+  "homepage": "https://github.com/Chivos/3D-Gedcom-explorer#readme",
+  "devDependencies": {
+    "3d-force-graph": "^1.80.1",
+    "esbuild": "^0.28.2",
+    "three": "^0.186.1",
+    "three-spritetext": "^1.10.0"
+  },
+  "private": true
+}

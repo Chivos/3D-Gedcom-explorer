@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!--
+    Confidentialité : la page n'a le droit d'ouvrir AUCUNE connexion réseau
+    (connect-src 'none') ni d'envoyer de formulaire. Le fichier GEDCOM est lu
+    et traité uniquement dans le navigateur.
+  -->
+  <meta http-equiv="Content-Security-Policy"
+        content="connect-src 'none'; form-action 'none'; frame-src 'none'; object-src 'none'; img-src data: blob:; font-src 'none'; media-src 'none'; worker-src 'none'">
+  <title>Arbre 3D GEDCOM</title>
+  <link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+  <header id="topbar">
+    <div class="brand" title="Explorateur 3D de fichiers GEDCOM">
+      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="5" r="2.4"/><circle cx="5" cy="18" r="2.4"/><circle cx="19" cy="18" r="2.4"/><circle cx="12" cy="13" r="1.6"/><path d="M12 7.4V11.4M10.7 14L6.5 16.3M13.3 14l4.2 2.3M7.4 18h9.2" fill="none" stroke-width="1.4"/></svg>
+      <span>Arbre&nbsp;3D</span>
+    </div>
+    <button id="btn-open" class="btn" title="Ouvrir un fichier GEDCOM (.ged)">Ouvrir…</button>
+    <div class="search-wrap">
+      <input id="search" type="search" placeholder="Rechercher une personne…  ( / )" autocomplete="off" disabled>
+      <ul id="search-results" class="dropdown" hidden></ul>
+    </div>
+    <div class="spacer"></div>
+    <span id="file-info" class="muted"></span>
+    <button id="btn-stats" class="btn" disabled title="Statistiques et unions consanguines">Statistiques</button>
+    <button id="btn-settings" class="btn" disabled title="Options d'affichage">Affichage</button>
+    <button id="btn-shot" class="btn icon" disabled title="Enregistrer une image (PNG)">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 8h3l2-3h6l2 3h3v11H4z" fill="none" stroke-width="1.6"/><circle cx="12" cy="13" r="3.5" fill="none" stroke-width="1.6"/></svg>
+    </button>
+    <button id="btn-help" class="btn icon" title="Aide">?</button>
+    <input id="file-input" type="file" accept=".ged,.gedcom,.GED,text/plain" hidden>
+  </header>
+
+  <main id="stage">
+    <div id="graph"></div>
+
+    <section id="welcome">
+      <div class="welcome-card">
+        <h1>Explorez votre arbre généalogique en 3D</h1>
+        <p>Chargez un fichier <strong>GEDCOM</strong> (.ged) exporté depuis votre logiciel de généalogie
+          (Heredis, Geneanet, Ancestris, Gramps, MyHeritage…). Chaque personne devient un point dans l'espace,
+          reliée à ses parents, conjoints et enfants : remariages, cousinages et ancêtres communs apparaissent d'un coup d'œil.</p>
+        <div id="dropzone">
+          <p><strong>Glissez-déposez votre fichier ici</strong><br>ou</p>
+          <div class="row">
+            <button id="btn-open-2" class="btn primary">Choisir un fichier…</button>
+            <button id="btn-demo" class="btn">Essayer avec un exemple</button>
+          </div>
+        </div>
+        <p class="privacy">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M6 10V8a6 6 0 0 1 12 0v2M5 10h14v10H5z" fill="none" stroke-width="1.6"/></svg>
+          <span><strong>100&nbsp;% local.</strong> Le fichier est lu et analysé par votre navigateur ; rien n'est envoyé
+          sur internet (la page s'interdit même toute connexion réseau). Vous pouvez l'utiliser hors-ligne.</span>
+        </p>
+      </div>
+    </section>
+
+    <div id="loading" hidden><div class="spinner"></div><span id="loading-text">Analyse du fichier…</span></div>
+
+    <aside id="legend" hidden></aside>
+    <div id="hint" class="muted" hidden>Clic : sélectionner · Maj+clic : lien de parenté avec la sélection · glisser : tourner · molette : zoom · clic droit + glisser : déplacer</div>
+
+    <aside id="panel" class="side" hidden>
+      <button class="close" data-close="panel" title="Fermer">×</button>
+      <div id="panel-body"></div>
+    </aside>
+
+    <aside id="settings" class="side left" hidden>
+      <button class="close" data-close="settings" title="Fermer">×</button>
+      <h2>Affichage</h2>
+      <label class="field">Structure
+        <select id="opt-structure">
+          <option value="families">Personnes + nœuds « union »</option>
+          <option value="persons">Personnes seules</option>
+        </select>
+        <small>Un nœud « union » relie un couple à ses enfants : remariages et demi-fratries deviennent lisibles.</small>
+      </label>
+      <label class="field">Disposition
+        <select id="opt-layout">
+          <option value="free">Libre (forces)</option>
+          <option value="generations">Par générations (étages)</option>
+          <option value="timeline">Chronologique (année de naissance)</option>
+        </select>
+      </label>
+      <label class="field">Couleur des personnes
+        <select id="opt-color">
+          <option value="sex">Sexe</option>
+          <option value="surname">Patronyme</option>
+          <option value="era">Époque de naissance</option>
+          <option value="place">Lieu de naissance</option>
+          <option value="component">Groupe familial (composante)</option>
+        </select>
+      </label>
+      <label class="field">Noms affichés
+        <select id="opt-labels">
+          <option value="focus">Sélection et personnes mises en évidence</option>
+          <option value="all">Tous (lent sur les gros arbres)</option>
+          <option value="none">Aucun (survol uniquement)</option>
+        </select>
+      </label>
+      <label class="check"><input type="checkbox" id="opt-hide"> Masquer les personnes non mises en évidence</label>
+      <label class="check"><input type="checkbox" id="opt-focus"> N'afficher que l'entourage de la sélection</label>
+      <label class="field inline">Rayon de l'entourage
+        <input type="range" id="opt-radius" min="1" max="15" value="4"><output id="opt-radius-val">4</output>
+      </label>
+      <label class="check"><input type="checkbox" id="opt-particles" checked> Animer les liens mis en évidence</label>
+      <div class="row">
+        <button id="btn-reheat" class="btn small">Relancer la mise en place</button>
+        <button id="btn-fit" class="btn small">Tout voir</button>
+      </div>
+    </aside>
+
+    <aside id="stats" class="side left" hidden>
+      <button class="close" data-close="stats" title="Fermer">×</button>
+      <div id="stats-body"></div>
+    </aside>
+
+    <aside id="help" class="side" hidden>
+      <button class="close" data-close="help" title="Fermer">×</button>
+      <h2>Aide</h2>
+      <h3>Navigation</h3>
+      <ul>
+        <li><b>Glisser</b> : faire tourner la vue · <b>molette</b> : zoomer · <b>clic droit + glisser</b> : déplacer.</li>
+        <li><b>Clic</b> sur une personne : fiche détaillée, la caméra se centre dessus.</li>
+        <li><b>Maj + clic</b> sur une 2<sup>e</sup> personne : calcule le lien de parenté avec la personne sélectionnée.</li>
+        <li><b>/</b> : rechercher · <b>Échap</b> : tout désélectionner.</li>
+      </ul>
+      <h3>Lecture du graphe</h3>
+      <ul>
+        <li>Les petits nœuds dorés sont des <b>unions</b> (couples) ; leurs enfants y sont rattachés.</li>
+        <li>Une union en <b style="color:var(--danger)">rouge</b> réunit deux conjoints apparentés (union consanguine).</li>
+        <li>Un ancêtre atteint par plusieurs chemins (<b>implexe</b>) est signalé dans la fiche de ses descendants.</li>
+        <li>La disposition « par générations » place les ancêtres en haut ; « chronologique » aligne chacun sur son année de naissance (estimée si inconnue).</li>
+      </ul>
+      <h3>Confidentialité</h3>
+      <p>Tout est calculé dans ce navigateur. Aucune donnée n'est envoyée ni conservée : fermer l'onglet efface tout.</p>
+    </aside>
+
+    <div id="toast" hidden></div>
+  </main>
+
+  <script src="vendor/vendor.js"></script>
+  <script src="src/gedcom.js"></script>
+  <script src="src/kinship.js"></script>
+  <script src="src/sample.js"></script>
+  <script src="src/app.js"></script>
+</body>
+</html>
