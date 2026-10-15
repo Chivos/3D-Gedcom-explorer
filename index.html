@@ -112,8 +112,16 @@
       </label>
       <label class="check"><input type="checkbox" id="opt-hide"> Masquer les personnes non mises en évidence</label>
       <label class="check"><input type="checkbox" id="opt-focus"> N'afficher que l'entourage de la sélection</label>
-      <label class="field inline">Rayon de l'entourage
-        <input type="range" id="opt-radius" min="1" max="15" value="4"><output id="opt-radius-val">4</output>
+      <label class="field">Direction de l'entourage
+        <select id="opt-direction">
+          <option value="all">Toutes directions (parents, enfants, conjoints)</option>
+          <option value="up">Ascendants seulement</option>
+          <option value="down">Descendants seulement (avec leurs conjoints)</option>
+        </select>
+        <small>S'applique à l'option ci-dessus et au bouton « Entourage » de la fiche.</small>
+      </label>
+      <label class="field inline">Rayon (liens ou générations)
+        <input type="range" id="opt-radius" min="1" max="25" value="4"><output id="opt-radius-val">4</output>
       </label>
       <label class="check"><input type="checkbox" id="opt-particles" checked> Animer les liens mis en évidence</label>
       <div class="row">

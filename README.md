@@ -69,8 +69,12 @@ remariage et dates du calendrier républicain).
 - **Taille des personnes** réglable (de 30 % à 300 %).
 - **Fiche personne** : dates et lieux, profession, notes, parents, conjoints, enfants,
   frères et sœurs (demi signalés), nombre d'ascendants et de descendants.
-- **Mise en évidence** des ascendants, descendants, des deux, ou de l'entourage
-  (rayon réglable) ; option pour masquer tout le reste.
+- **Mise en évidence** des ascendants, descendants, des deux, ou de l'entourage ;
+  option pour masquer tout le reste.
+- **Entourage** de la personne sélectionnée (mise en évidence, ou seul affiché) :
+  dans toutes les directions (parents, enfants, conjoints) sur N liens, ou seulement
+  ses **ascendants** sur N générations, ou seulement ses **descendants** (avec leurs
+  conjoints) sur N générations.
 - **Lien de parenté** entre deux personnes : nom du lien en français (oncle, cousin
   germain, issu de germain, demi-…, cousin d'un parent…), degré civil, ancêtres
   communs les plus proches, chemin animé dans la vue 3D. À défaut de lien de sang,

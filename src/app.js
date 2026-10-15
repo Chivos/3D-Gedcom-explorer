@@ -36,7 +36,7 @@
   const DEFAULTS = {
     structure: 'families', layout: 'free', color: 'sex', labels: 'focus',
     hideOthers: false, focusOnly: false, radius: 4, particles: true,
-    nodeSize: 1, groupSurnames: false, groupStrength: 0.5,
+    nodeSize: 1, groupSurnames: false, groupStrength: 0.5, direction: 'all',
   };
   let settings = { ...DEFAULTS };
   try { Object.assign(settings, JSON.parse(localStorage.getItem('gedcom3d.settings') || '{}')); } catch (e) { /* stockage indisponible */ }
@@ -264,10 +264,34 @@
     return n;
   }
 
-  function visiblePersons() {
-    if (settings.focusOnly && state.selected) {
-      return new Set(state.K.neighborhood(state.selected, settings.radius).keys());
+  /**
+   * Entourage d'une personne selon la direction choisie :
+   * - all  : tous les liens (parents, enfants, conjoints) jusqu'à `radius` liens ;
+   * - up   : ascendants sur `radius` générations ;
+   * - down : descendants sur `radius` générations, avec leurs conjoints
+   *          (l'autre parent des enfants).
+   */
+  function entourage(id) {
+    const K = state.K;
+    const r = settings.radius;
+    if (settings.direction === 'up') return new Set([id, ...K.ancestors(id, r).keys()]);
+    if (settings.direction === 'down') {
+      const out = new Set([id, ...K.descendants(id, r).keys()]);
+      for (const p of [...out]) for (const s of K.spousesOf(p)) out.add(s);
+      return out;
     }
+    return new Set(K.neighborhood(id, r).keys());
+  }
+
+  function entourageLabel() {
+    const r = settings.radius;
+    if (settings.direction === 'up') return r + ' génération(s) d\'ascendants';
+    if (settings.direction === 'down') return r + ' génération(s) de descendants';
+    return r + ' lien(s)';
+  }
+
+  function visiblePersons() {
+    if (settings.focusOnly && state.selected) return entourage(state.selected);
     return null; // tout le monde
   }
 
@@ -391,8 +415,8 @@
         label = 'Ascendants et descendants de ' + name;
         break;
       case 'neighborhood':
-        persons = new Set(K.neighborhood(id, settings.radius).keys());
-        label = 'Entourage de ' + name + ' (' + settings.radius + ' liens)';
+        persons = entourage(id);
+        label = 'Entourage de ' + name + ' (' + entourageLabel() + ')';
         break;
       case 'implex':
         persons = new Set([id, ...extra]);
@@ -1252,13 +1276,16 @@
     radius.value = settings.radius;
     $('#opt-radius-val').textContent = settings.radius;
     radius.addEventListener('input', () => { $('#opt-radius-val').textContent = radius.value; });
+    const refreshEntourage = () => {
+      if (settings.focusOnly) rebuildGraph();
+      if (state.highlight && state.highlight.mode === 'neighborhood') setHighlight('neighborhood');
+    };
     radius.addEventListener('change', () => {
       settings.radius = parseInt(radius.value, 10);
       saveSettings();
-      if (!state.data) return;
-      if (settings.focusOnly) rebuildGraph();
-      if (state.highlight && state.highlight.mode === 'neighborhood') setHighlight('neighborhood');
+      if (state.data) refreshEntourage();
     });
+    bind('#opt-direction', 'direction', refreshEntourage);
     $('#btn-reheat').addEventListener('click', () => {
       for (const n of Graph.graphData().nodes) { delete n.x; delete n.y; delete n.z; delete n.vx; delete n.vy; delete n.vz; }
       rebuildGraph();
