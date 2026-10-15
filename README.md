@@ -61,6 +61,12 @@ remariage et dates du calendrier républicain).
   **chronologique** (hauteur = année de naissance, estimée si inconnue).
 - **Couleurs** : sexe, patronyme, époque de naissance, lieu de naissance, groupe familial.
   Cliquer sur un patronyme ou un lieu de la légende met ses porteurs en évidence.
+- **Regroupement par patronyme** (menu *Affichage*) : les porteurs d'un même nom sont
+  attirés vers une zone commune, dont le nom flotte au-dessus. Les femmes sont rattachées
+  à leur nom de naissance : les mariages apparaissent comme des ponts entre zones.
+  L'intensité est réglable ; fonctionne avec les trois dispositions (en « générations »
+  et « chronologique », les zones s'étalent horizontalement, l'axe vertical restant le temps).
+- **Taille des personnes** réglable (de 30 % à 300 %).
 - **Fiche personne** : dates et lieux, profession, notes, parents, conjoints, enfants,
   frères et sœurs (demi signalés), nombre d'ascendants et de descendants.
 - **Mise en évidence** des ascendants, descendants, des deux, ou de l'entourage
